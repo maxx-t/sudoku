@@ -31,3 +31,8 @@
 # Debug files
 *.dSYM/
 *.su
+.idea/
+CMakeLists.txt
+.gitignore
+sudoku
+callgrind.out.*
