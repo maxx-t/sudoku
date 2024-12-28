@@ -1,20 +1,9 @@
 #include <stdio.h>
 #include <stdlib.h>
-
-//#define VERBOSE // defined if gcc main.c -o sudoku -DVERBOSE
-//#define DIAGONALS // defined if gcc main.c -o sudoku -DDIAGONALS
-
-#ifdef VERBOSE
-#include <memory.h>
-#endif
+#include <stdbool.h>
 
 #define SIZE 9
-#define TOTAL SIZE * SIZE
-#define TRUE 1
-#define FALSE 0
-
-#define ASSIGN_VALUE(s, pos, val) s->row[pos] = s->col[pos] = s->block[pos] = val;
-
+#define GRID_SIZE SIZE * SIZE
 
 typedef struct cell_t {
   int val;
@@ -28,23 +17,25 @@ typedef struct grid_t {
   cell_t **rows;
   cell_t **blocks;
   cell_t **data;
-
-#ifdef DIAGONALS
-  cell_t **diagonal1;
-  cell_t **diagonal2;
-#endif
-
 } grid_t;
 
-void printGrid(cell_t *grid) {
+static inline void assign_cell_ptr(cell_t *c, int i) {
+    c->row[i] = c->col[i] = c->block[i] = c;
+}
+
+static inline void reset_cell_ptr(cell_t *c, int i) {
+    c->row[i] = c->col[i] = c->block[i] = NULL;
+}
+
+void print_grid(cell_t *grid) {
   int i, j, val;
   for (i = 0; i < SIZE; i++) {
     if (i % 3 == 0) {
-      printf("+------+------+------+\n");
+      printf("+-------+-------+-------+\n");
     }
     for (j = 0; j < SIZE; j++) {
       if (j % 3 == 0) {
-        printf("|");
+        printf("| ");
       }
       val = (grid + (i * SIZE + j))->val;
       if (val == 0) {
@@ -56,119 +47,60 @@ void printGrid(cell_t *grid) {
     }
     printf("|\n");
   }
-  printf("+------+------+------+\n");
+  printf("+-------+-------+-------+\n");
 }
 
-grid_t *allocGrid() {
+grid_t *alloc_grid(void) {
   grid_t *grid = malloc(sizeof(grid_t));
 
-  cell_t **data = calloc(4 * TOTAL, sizeof(cell_t *));
+  cell_t **data = calloc(4 * GRID_SIZE, sizeof(cell_t *));
 
   grid->data = data;
-  grid->columns = data + TOTAL;
-  grid->rows = data + 2 * TOTAL;
-  grid->blocks = data + 3 * TOTAL;
-
-#ifdef DIAGONALS
-  grid->diagonal1 = calloc(SIZE, sizeof * grid->diagonal1);
-  grid->diagonal2 = calloc(SIZE, sizeof * grid->diagonal2);
-#endif
+  grid->columns = data + GRID_SIZE;
+  grid->rows = data + 2 * GRID_SIZE;
+  grid->blocks = data + 3 * GRID_SIZE;
 
   return grid;
 }
 
-void freeGrid(grid_t *grid) {
+void free_grid(grid_t *grid) {
   free(grid->data);
   free(grid);
 }
 
-#ifdef VERBOSE
-void showLine(int n) {
-  char r[n];
-  memset(&r, '.', (size_t) n);
-  r[n] = '\0';
-  printf("%.2d%s", n, r);
-}
-#endif
-
-int affect(cell_t *cells, int pos, int val, grid_t *grid) {
+static inline int assign_cell_value(cell_t *cells, int pos, int val, grid_t *grid) {
   cell_t *cell = cells + pos;
 
   if (cell->col[val - 1] || cell->row[val - 1] || cell->block[val - 1]) {
-    return FALSE;
+    return false;
   }
-
-#ifdef DIAGONALS
-  int x = pos % SIZE;
-  int y = pos / SIZE;
-  if (x == y) {
-    if (grid->diagonal1[val - 1]) {
-      return FALSE;
-    }
-    else {
-      grid->diagonal1[val - 1] = cell;
-    }
-  }
-  if (y + x == SIZE - 1) {
-    if (grid->diagonal2[val - 1]) {
-      if (x == y) {
-        grid->diagonal1[val - 1] = NULL;
-      }
-      return FALSE;
-    }
-    else {
-      grid->diagonal2[val - 1] = cell;
-    }
-  }
-#endif
-
-#ifdef VERBOSE
-  showLine(pos);
-  printf(" +%d\n", val);
-#endif
 
   cell->val = val;
 
-  ASSIGN_VALUE(cell, val - 1, cell);
+  assign_cell_ptr(cell, val - 1);
 
   grid->data[pos] = cell;
 
-  return TRUE;
+  return true;
 }
 
-void discard(cell_t *cells, int pos, int val, grid_t *grid) {
+static inline void reset_cell_value(cell_t *cells, int pos, int val, grid_t *grid) {
   cell_t *cell = cells + pos;
   cell->val = 0;
 
-  ASSIGN_VALUE(cell, val - 1, NULL);
-
-#ifdef DIAGONALS
-  int x = pos % SIZE;
-  int y = pos / SIZE;
-  if (x == y) {
-    grid->diagonal1[val - 1] = NULL;
-  }
-  if (y + x == SIZE - 1) {
-    grid->diagonal2[val - 1] = NULL;
-  }
-#endif
-
-#ifdef VERBOSE
-  showLine(pos);
-  printf(" -%d\n", val);
-#endif
+  reset_cell_ptr(cell, val - 1);
 
   grid->data[pos] = NULL;
 }
 
-void init(cell_t *cells, int *arrayGrid, grid_t *grid) {
+void init(cell_t *cells, int *array_grid, grid_t *grid) {
   int i, j, pos;
   cell_t *cell;
 
   for (i = 0; i < SIZE; i++) {
     for (j = 0; j < SIZE; j++) {
       pos = i * SIZE + j;
-      int val = *(arrayGrid + pos);
+      int val = *(array_grid + pos);
 
       cell = cells + pos;
       cell->val = val;
@@ -176,8 +108,8 @@ void init(cell_t *cells, int *arrayGrid, grid_t *grid) {
       cell->col = &grid->columns[j * SIZE];
       cell->block = &grid->blocks[((j / 3) + 3 * (i / 3)) * SIZE];
 
-      if (cell->val) {
-        ASSIGN_VALUE(cell, cell->val - 1, cell);
+      if (val) {
+        assign_cell_ptr(cell, val - 1);
       }
 
       grid->data[pos] = cell;
@@ -186,23 +118,24 @@ void init(cell_t *cells, int *arrayGrid, grid_t *grid) {
 }
 
 int solve(cell_t *cells, grid_t *grid, int depth, int current) {
-  int i, j, success = TRUE;
+  int i, j, success = true;
 
   // Looking for next empty cell
-  for (i = current; i < TOTAL; i++) {
+  for (i = current; i < GRID_SIZE; i++) {
     if ((cells + i)->val == 0) {
       break;
     }
   }
-  if (i != TOTAL) {
+
+  if (i != GRID_SIZE) {
     j = 1;
-    success = FALSE;
+    success = false;
     while (j < 10 && !success) {
-      success = affect(cells, i, j, grid);
+      success = assign_cell_value(cells, i, j, grid);
       if (success) {
         success = solve(cells, grid, depth + 1, i);
         if (!success) {
-          discard(cells, i, j, grid);
+          reset_cell_value(cells, i, j, grid);
         }
       }
       j++;
@@ -211,21 +144,21 @@ int solve(cell_t *cells, grid_t *grid, int depth, int current) {
 
   if (depth == 0) {
     if (success) {
-      printf("Solution found !\n");
+      printf("Solution found!\n");
     }
     else {
-      printf("No solution found .\n");
+      printf("No solution found.\n");
     }
-    printGrid(cells);
+    print_grid(cells);
   }
 
   return success;
 }
 
-int main() {
-  cell_t cells[TOTAL];
+int main(void) {
+  cell_t cells[GRID_SIZE];
 
-  grid_t *grid = allocGrid();
+  grid_t *grid = alloc_grid();
 
   int initial_grid[SIZE][SIZE] = {
     { 0, 9, 5, 0, 7, 0, 0, 4, 0 },
@@ -239,24 +172,12 @@ int main() {
     { 0, 8, 0, 0, 5, 0, 2, 6, 0 }
   };
 
-  // int initial_grid[SIZE][SIZE] = {
-  //   { 0, 0, 0, 0, 0, 0, 0, 0, 0 },
-  //   { 0, 0, 0, 0, 0, 0, 0, 0, 0 },
-  //   { 0, 0, 0, 0, 0, 0, 0, 0, 0 },
-  //   { 0, 0, 0, 0, 0, 0, 0, 0, 0 },
-  //   { 0, 0, 0, 0, 0, 0, 0, 0, 0 },
-  //   { 0, 0, 0, 0, 0, 0, 0, 0, 0 },
-  //   { 0, 0, 0, 0, 0, 0, 0, 0, 0 },
-  //   { 0, 0, 0, 0, 0, 0, 0, 0, 0 },
-  //   { 0, 0, 0, 0, 0, 0, 0, 0, 0 }
-  // };
-
   init(cells, *initial_grid, grid);
 
-  printGrid(*grid->data);
+  print_grid(*grid->data);
 
   solve(cells, grid, 0, 0);
 
-  freeGrid(grid);
+  free_grid(grid);
   return 0;
 }
